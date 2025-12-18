@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/KasumiMercury/primind-notification-invoker/internal/fcm"
@@ -18,6 +19,7 @@ func NewNotificationHandler(client *fcm.Client) *NotificationHandler {
 
 func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		slog.Warn("method not allowed", "method", r.Method, "path", r.URL.Path)
 		respondJSON(w, http.StatusMethodNotAllowed, model.ErrorResponse{
 			Success: false,
 			Error:   "method not allowed",
@@ -27,6 +29,7 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 
 	var req model.NotificationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.Error("failed to decode request body", "error", err)
 		respondJSON(w, http.StatusBadRequest, model.ErrorResponse{
 			Success: false,
 			Error:   "invalid JSON: " + err.Error(),
@@ -36,6 +39,7 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 
 	params, err := req.ToDomain()
 	if err != nil {
+		slog.Error("invalid request parameters", "error", err)
 		respondJSON(w, http.StatusBadRequest, model.ErrorResponse{
 			Success: false,
 			Error:   err.Error(),
@@ -43,14 +47,27 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	slog.Info("sending notification",
+		"task_id", params.TaskID.String(),
+		"task_type", params.TaskType.String(),
+		"token_count", len(params.Tokens),
+	)
+
 	result, err := h.fcmClient.SendBulkNotification(r.Context(), params.Tokens, params.TaskID, params.TaskType)
 	if err != nil {
+		slog.Error("FCM bulk notification failed", "error", err)
 		respondJSON(w, http.StatusInternalServerError, model.ErrorResponse{
 			Success: false,
 			Error:   "FCM error: " + err.Error(),
 		})
 		return
 	}
+
+	slog.Info("notification sent",
+		"total", result.Total,
+		"success_count", result.SuccessCount,
+		"failure_count", result.FailureCount,
+	)
 
 	respondJSON(w, http.StatusOK, model.NotificationResponse{
 		Success:      true,

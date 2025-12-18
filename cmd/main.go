@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,13 +15,24 @@ import (
 )
 
 func main() {
+	// Load configuration
 	cfg := config.Load()
+
+	// Initialize slog with JSON handler
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: cfg.LogLevel,
+	}))
+	slog.SetDefault(logger)
+
+	slog.Info("configuration loaded", slog.String("port", cfg.Port))
 
 	ctx := context.Background()
 	fcmClient, err := fcm.NewClient(ctx, cfg.FirebaseProjectID)
 	if err != nil {
-		log.Fatalf("Failed to initialize FCM client: %v", err)
+		slog.Error("failed to initialize FCM client", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+	slog.Info("FCM client initialized")
 
 	notificationHandler := handler.NewNotificationHandler(fcmClient)
 
@@ -38,9 +49,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Starting server on port %s", cfg.Port)
+		slog.Info("starting server", slog.String("port", cfg.Port))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
+			slog.Error("server failed", slog.String("error", err.Error()))
+			os.Exit(1)
 		}
 	}()
 
@@ -48,14 +60,15 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
+	slog.Info("shutting down server")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("server forced to shutdown", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
-	log.Println("Server exited")
+	slog.Info("server exited")
 }

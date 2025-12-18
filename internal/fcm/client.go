@@ -2,6 +2,7 @@ package fcm
 
 import (
 	"context"
+	"log/slog"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
@@ -64,6 +65,11 @@ func (c *Client) SendBulkNotification(ctx context.Context, tokens []domain.FCMTo
 		return c.sendBatch(ctx, tokens, taskID, taskType)
 	}
 
+	slog.Debug("splitting tokens into batches",
+		"total_tokens", len(tokens),
+		"max_per_batch", maxTokensPerBatch,
+	)
+
 	var allResults []model.TokenResult
 	successCount, failureCount := 0, 0
 
@@ -73,15 +79,25 @@ func (c *Client) SendBulkNotification(ctx context.Context, tokens []domain.FCMTo
 			end = len(tokens)
 		}
 		batch := tokens[i:end]
+		batchNum := (i / maxTokensPerBatch) + 1
+
+		slog.Debug("sending batch", "batch_number", batchNum, "batch_size", len(batch))
 
 		result, err := c.sendBatch(ctx, batch, taskID, taskType)
 		if err != nil {
+			slog.Error("batch send failed", "batch_number", batchNum, "error", err)
 			return nil, err
 		}
 
 		allResults = append(allResults, result.Results...)
 		successCount += result.SuccessCount
 		failureCount += result.FailureCount
+
+		slog.Debug("batch completed",
+			"batch_number", batchNum,
+			"success_count", result.SuccessCount,
+			"failure_count", result.FailureCount,
+		)
 	}
 
 	return &BulkResult{
@@ -110,6 +126,7 @@ func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID
 
 	response, err := c.messagingClient.SendEachForMulticast(ctx, message)
 	if err != nil {
+		slog.Error("FCM multicast send failed", "error", err, "token_count", len(tokens))
 		return nil, err
 	}
 
@@ -122,6 +139,10 @@ func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID
 		}
 		if resp.Error != nil {
 			results[i].Error = resp.Error.Error()
+			slog.Warn("FCM send failed for token",
+				"token_index", i,
+				"error", resp.Error.Error(),
+			)
 		}
 	}
 
