@@ -19,9 +19,9 @@ type NotificationTemplate struct {
 }
 
 var notificationTemplates = map[domain.Type]NotificationTemplate{
-	domain.TypeUrgent:    {Title: "Urgency Task", Body: "Urgency Task Notification"},
-	domain.TypeNormal:    {Title: "Normal Task", Body: "Task Notification"},
-	domain.TypeLow:       {Title: "Low Task", Body: "Low Priority Task Notification"},
+	domain.TypeShort:     {Title: "Urgency Task", Body: "Urgency Task Notification"},
+	domain.TypeNear:      {Title: "Normal Task", Body: "Task Notification"},
+	domain.TypeRelaxed:   {Title: "Low Task", Body: "Low Priority Task Notification"},
 	domain.TypeScheduled: {Title: "Scheduled Task", Body: "Scheduled Task Notification"},
 }
 
