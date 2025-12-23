@@ -5,9 +5,8 @@ import (
 )
 
 type NotificationRequest struct {
-	Tokens   []string `json:"tokens"`
-	TaskID   string   `json:"task_id"`
-	TaskType string   `json:"task_type"`
+	Tokens []string `json:"tokens"`
+	TaskID string   `json:"task_id"`
 }
 
 type NotificationParams struct {
@@ -16,18 +15,13 @@ type NotificationParams struct {
 	TaskType domain.Type
 }
 
-func (r *NotificationRequest) ToDomain() (*NotificationParams, error) {
+func (r *NotificationRequest) ToDomain(taskType domain.Type) (*NotificationParams, error) {
 	tokens, err := domain.NewFCMTokens(r.Tokens)
 	if err != nil {
 		return nil, err
 	}
 
 	taskID, err := domain.NewTaskID(r.TaskID)
-	if err != nil {
-		return nil, err
-	}
-
-	taskType, err := domain.NewType(r.TaskType)
 	if err != nil {
 		return nil, err
 	}

@@ -2,11 +2,15 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 
+	"github.com/KasumiMercury/primind-notification-invoker/internal/domain"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/fcm"
+	notifyv1 "github.com/KasumiMercury/primind-notification-invoker/internal/gen/notify/v1"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/model"
+	pjson "github.com/KasumiMercury/primind-notification-invoker/internal/proto"
 )
 
 type NotificationHandler struct {
@@ -20,30 +24,46 @@ func NewNotificationHandler(client *fcm.Client) *NotificationHandler {
 func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		slog.Warn("method not allowed", "method", r.Method, "path", r.URL.Path)
-		respondJSON(w, http.StatusMethodNotAllowed, model.ErrorResponse{
-			Success: false,
-			Error:   "method not allowed",
-		})
+		respondProtoError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	var req model.NotificationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		slog.Error("failed to read request body", "error", err)
+		respondProtoError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+
+	var req notifyv1.NotificationRequest
+	if err := pjson.Unmarshal(body, &req); err != nil {
 		slog.Error("failed to decode request body", "error", err)
-		respondJSON(w, http.StatusBadRequest, model.ErrorResponse{
-			Success: false,
-			Error:   "invalid JSON: " + err.Error(),
-		})
+		respondProtoError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 
-	params, err := req.ToDomain()
+	if err := pjson.Validate(&req); err != nil {
+		slog.Error("validation error", "error", err)
+		respondProtoError(w, http.StatusBadRequest, "validation error: "+err.Error())
+		return
+	}
+
+	taskType, err := domain.ProtoTaskTypeToDomain(req.TaskType)
+	if err != nil {
+		slog.Error("invalid task type", "error", err)
+		respondProtoError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	modelReq := model.NotificationRequest{
+		Tokens: req.Tokens,
+		TaskID: req.TaskId,
+	}
+
+	params, err := modelReq.ToDomain(taskType)
 	if err != nil {
 		slog.Error("invalid request parameters", "error", err)
-		respondJSON(w, http.StatusBadRequest, model.ErrorResponse{
-			Success: false,
-			Error:   err.Error(),
-		})
+		respondProtoError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -56,10 +76,7 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 	result, err := h.fcmClient.SendBulkNotification(r.Context(), params.Tokens, params.TaskID, params.TaskType)
 	if err != nil {
 		slog.Error("FCM bulk notification failed", "error", err)
-		respondJSON(w, http.StatusInternalServerError, model.ErrorResponse{
-			Success: false,
-			Error:   "FCM error: " + err.Error(),
-		})
+		respondProtoError(w, http.StatusInternalServerError, "FCM error: "+err.Error())
 		return
 	}
 
@@ -69,13 +86,34 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 		"failure_count", result.FailureCount,
 	)
 
-	respondJSON(w, http.StatusOK, model.NotificationResponse{
+	protoResults := make([]*notifyv1.TokenResult, len(result.Results))
+	for i, r := range result.Results {
+		protoResults[i] = &notifyv1.TokenResult{
+			Token:     r.Token,
+			Success:   r.Success,
+			MessageId: r.MessageID,
+			Error:     r.Error,
+		}
+	}
+
+	resp := &notifyv1.NotificationResponse{
 		Success:      true,
-		Total:        result.Total,
-		SuccessCount: result.SuccessCount,
-		FailureCount: result.FailureCount,
-		Results:      result.Results,
-	})
+		Total:        int32(result.Total),
+		SuccessCount: int32(result.SuccessCount),
+		FailureCount: int32(result.FailureCount),
+		Results:      protoResults,
+	}
+
+	respBytes, err := pjson.Marshal(resp)
+	if err != nil {
+		slog.Error("failed to marshal response", "error", err)
+		respondProtoError(w, http.StatusInternalServerError, "failed to marshal response")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBytes)
 }
 
 func Health(w http.ResponseWriter, r *http.Request) {
@@ -96,4 +134,15 @@ func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
+}
+
+func respondProtoError(w http.ResponseWriter, status int, message string) {
+	resp := &notifyv1.ErrorResponse{
+		Success: false,
+		Error:   message,
+	}
+	respBytes, _ := pjson.Marshal(resp)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(respBytes)
 }
