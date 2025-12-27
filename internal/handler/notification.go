@@ -113,7 +113,9 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(respBytes)
+	if _, err := w.Write(respBytes); err != nil {
+		slog.Warn("failed to write response", "error", err)
+	}
 }
 
 func Health(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +135,9 @@ func Health(w http.ResponseWriter, r *http.Request) {
 func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		slog.Warn("failed to write response", "error", err)
+	}
 }
 
 func respondProtoError(w http.ResponseWriter, status int, message string) {
@@ -144,5 +148,7 @@ func respondProtoError(w http.ResponseWriter, status int, message string) {
 	respBytes, _ := pjson.Marshal(resp)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write(respBytes)
+	if _, err := w.Write(respBytes); err != nil {
+		slog.Warn("failed to write response", "error", err)
+	}
 }
