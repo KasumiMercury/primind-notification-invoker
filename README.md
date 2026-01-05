@@ -14,3 +14,6 @@ Firebase Cloud Messagingに通知送信を要求するワーカー
 - `proto/notify/v1/notify.proto`
 - `proto/common/v1/common.proto`
   - Enum: `TaskType`
+
+## 関連リポジトリ
+[KasumiMercury/primind-root](https://github.com/KasumiMercury/primind-root)
