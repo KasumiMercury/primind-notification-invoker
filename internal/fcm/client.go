@@ -123,13 +123,6 @@ func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID
 		Body:  template.Body,
 	}
 
-	// Add icon URL if web app base URL is configured and color is provided
-	if c.webAppBaseURL != "" && color != "" {
-		iconURL := buildIconURL(c.webAppBaseURL, taskType, color)
-		notification.ImageURL = iconURL
-		slog.Debug("notification icon URL set", "icon_url", iconURL)
-	}
-
 	message := &messaging.MulticastMessage{
 		Data: map[string]string{
 			"task_id":   taskID.String(),
@@ -137,6 +130,14 @@ func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID
 		},
 		Notification: notification,
 		Tokens:       tokenStrings,
+	}
+
+	// Add icon URL if web app base URL is configured and color is provided
+	if c.webAppBaseURL != "" && color != "" {
+		iconURL := buildIconURL(c.webAppBaseURL, taskType, color)
+		message.Webpush.Notification.Icon = iconURL
+		message.Android.Notification.Icon = iconURL
+		slog.Debug("notification icon URL set", "icon_url", iconURL)
 	}
 
 	response, err := c.messagingClient.SendEachForMulticast(ctx, message)
