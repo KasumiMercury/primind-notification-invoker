@@ -7,12 +7,14 @@ import (
 type NotificationRequest struct {
 	Tokens []string `json:"tokens"`
 	TaskID string   `json:"task_id"`
+	Color  string   `json:"color"` // hex color code e.g. "#EF4444"
 }
 
 type NotificationParams struct {
 	Tokens   []domain.FCMToken
 	TaskID   domain.TaskID
 	TaskType domain.Type
+	Color    string
 }
 
 func (r *NotificationRequest) ToDomain(taskType domain.Type) (*NotificationParams, error) {
@@ -30,6 +32,7 @@ func (r *NotificationRequest) ToDomain(taskType domain.Type) (*NotificationParam
 		Tokens:   tokens,
 		TaskID:   taskID,
 		TaskType: taskType,
+		Color:    r.Color,
 	}, nil
 }
 

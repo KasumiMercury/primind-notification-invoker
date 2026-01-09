@@ -60,14 +60,16 @@ func run() error {
 		return err
 	}
 
-	fcmClient, err := fcm.NewClient(ctx, cfg.FirebaseProjectID)
+	fcmClient, err := fcm.NewClient(ctx, cfg.FirebaseProjectID, cfg.WebAppBaseURL)
 	if err != nil {
 		slog.Error("failed to initialize FCM client", slog.String("error", err.Error()))
 
 		return err
 	}
 
-	slog.Info("FCM client initialized")
+	slog.Info("FCM client initialized",
+		slog.String("web_app_base_url", cfg.WebAppBaseURL),
+	)
 
 	notificationHandler := handler.NewNotificationHandler(fcmClient)
 

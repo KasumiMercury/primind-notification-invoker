@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Port              string
 	FirebaseProjectID string
+	WebAppBaseURL     string
 	LogLevel          slog.Level
 }
 
@@ -21,6 +22,7 @@ func Load() *Config {
 	return &Config{
 		Port:              port,
 		FirebaseProjectID: os.Getenv("FIREBASE_PROJECT_ID"),
+		WebAppBaseURL:     os.Getenv("WEB_APP_BASE_URL"),
 		LogLevel:          parseLogLevel(os.Getenv("LOG_LEVEL")),
 	}
 }

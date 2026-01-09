@@ -2,7 +2,9 @@ package fcm
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
@@ -32,9 +34,10 @@ var defaultTemplate = NotificationTemplate{
 
 type Client struct {
 	messagingClient *messaging.Client
+	webAppBaseURL   string
 }
 
-func NewClient(ctx context.Context, projectID string) (*Client, error) {
+func NewClient(ctx context.Context, projectID, webAppBaseURL string) (*Client, error) {
 	config := &firebase.Config{}
 	if projectID != "" {
 		config.ProjectID = projectID
@@ -50,7 +53,10 @@ func NewClient(ctx context.Context, projectID string) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{messagingClient: msgClient}, nil
+	return &Client{
+		messagingClient: msgClient,
+		webAppBaseURL:   webAppBaseURL,
+	}, nil
 }
 
 type BulkResult struct {
@@ -60,9 +66,9 @@ type BulkResult struct {
 	Results      []model.TokenResult
 }
 
-func (c *Client) SendBulkNotification(ctx context.Context, tokens []domain.FCMToken, taskID domain.TaskID, taskType domain.Type) (*BulkResult, error) {
+func (c *Client) SendBulkNotification(ctx context.Context, tokens []domain.FCMToken, taskID domain.TaskID, taskType domain.Type, color string) (*BulkResult, error) {
 	if len(tokens) <= maxTokensPerBatch {
-		return c.sendBatch(ctx, tokens, taskID, taskType)
+		return c.sendBatch(ctx, tokens, taskID, taskType, color)
 	}
 
 	slog.Debug("splitting tokens into batches",
@@ -83,7 +89,7 @@ func (c *Client) SendBulkNotification(ctx context.Context, tokens []domain.FCMTo
 
 		slog.Debug("sending batch", "batch_number", batchNum, "batch_size", len(batch))
 
-		result, err := c.sendBatch(ctx, batch, taskID, taskType)
+		result, err := c.sendBatch(ctx, batch, taskID, taskType, color)
 		if err != nil {
 			slog.Error("batch send failed", "batch_number", batchNum, "error", err)
 			return nil, err
@@ -108,20 +114,30 @@ func (c *Client) SendBulkNotification(ctx context.Context, tokens []domain.FCMTo
 	}, nil
 }
 
-func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID domain.TaskID, taskType domain.Type) (*BulkResult, error) {
+func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID domain.TaskID, taskType domain.Type, color string) (*BulkResult, error) {
 	template := getTemplate(taskType)
 	tokenStrings := domain.ToStrings(tokens)
+
+	notification := &messaging.Notification{
+		Title: template.Title,
+		Body:  template.Body,
+	}
 
 	message := &messaging.MulticastMessage{
 		Data: map[string]string{
 			"task_id":   taskID.String(),
 			"task_type": taskType.String(),
 		},
-		Notification: &messaging.Notification{
-			Title: template.Title,
-			Body:  template.Body,
-		},
-		Tokens: tokenStrings,
+		Notification: notification,
+		Tokens:       tokenStrings,
+	}
+
+	// Add icon URL if web app base URL is configured and color is provided
+	if c.webAppBaseURL != "" && color != "" {
+		iconURL := buildIconURL(c.webAppBaseURL, taskType, color)
+		message.Webpush.Notification.Icon = iconURL
+		message.Android.Notification.Icon = iconURL
+		slog.Debug("notification icon URL set", "icon_url", iconURL)
 	}
 
 	response, err := c.messagingClient.SendEachForMulticast(ctx, message)
@@ -159,4 +175,13 @@ func getTemplate(taskType domain.Type) NotificationTemplate {
 		return template
 	}
 	return defaultTemplate
+}
+
+func buildIconURL(baseURL string, taskType domain.Type, color string) string {
+	colorHex := strings.TrimPrefix(color, "#")
+	return fmt.Sprintf("%s/api/notification-icon/%s/%s.png",
+		strings.TrimSuffix(baseURL, "/"),
+		strings.ToLower(taskType.String()),
+		colorHex,
+	)
 }

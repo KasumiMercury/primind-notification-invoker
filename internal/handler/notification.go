@@ -58,6 +58,7 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 	modelReq := model.NotificationRequest{
 		Tokens: req.Tokens,
 		TaskID: req.TaskId,
+		Color:  req.Color,
 	}
 
 	params, err := modelReq.ToDomain(taskType)
@@ -71,9 +72,10 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 		"task_id", params.TaskID.String(),
 		"task_type", params.TaskType.String(),
 		"token_count", len(params.Tokens),
+		"color", params.Color,
 	)
 
-	result, err := h.fcmClient.SendBulkNotification(r.Context(), params.Tokens, params.TaskID, params.TaskType)
+	result, err := h.fcmClient.SendBulkNotification(r.Context(), params.Tokens, params.TaskID, params.TaskType, params.Color)
 	if err != nil {
 		slog.Error("FCM bulk notification failed", "error", err)
 		respondProtoError(w, http.StatusInternalServerError, "FCM error: "+err.Error())
