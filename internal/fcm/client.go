@@ -10,6 +10,7 @@ import (
 	"firebase.google.com/go/v4/messaging"
 
 	"github.com/KasumiMercury/primind-notification-invoker/internal/domain"
+	"github.com/KasumiMercury/primind-notification-invoker/internal/fcm/templates"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/model"
 )
 
@@ -18,18 +19,6 @@ const maxTokensPerBatch = 500
 type NotificationTemplate struct {
 	Title string
 	Body  string
-}
-
-var notificationTemplates = map[domain.Type]NotificationTemplate{
-	domain.TypeShort:     {Title: "Urgency Task", Body: "Urgency Task Notification"},
-	domain.TypeNear:      {Title: "Normal Task", Body: "Task Notification"},
-	domain.TypeRelaxed:   {Title: "Low Task", Body: "Low Priority Task Notification"},
-	domain.TypeScheduled: {Title: "Scheduled Task", Body: "Scheduled Task Notification"},
-}
-
-var defaultTemplate = NotificationTemplate{
-	Title: "Notification",
-	Body:  "New notification",
 }
 
 type Client struct {
@@ -171,10 +160,22 @@ func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID
 }
 
 func getTemplate(taskType domain.Type) NotificationTemplate {
-	if template, ok := notificationTemplates[taskType]; ok {
-		return template
+	provider, err := templates.GetProvider()
+	if err != nil {
+		slog.Warn("failed to get template provider, using fallback",
+			"error", err,
+		)
+		return NotificationTemplate{
+			Title: "お知らせ",
+			Body:  "新しい通知があります",
+		}
 	}
-	return defaultTemplate
+
+	msg := provider.GetRandomMessage(taskType)
+	return NotificationTemplate{
+		Title: msg.Title,
+		Body:  msg.Body,
+	}
 }
 
 func buildIconURL(baseURL string, taskType domain.Type, color string) string {
