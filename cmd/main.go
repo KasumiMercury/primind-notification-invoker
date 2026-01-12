@@ -75,11 +75,13 @@ func run() error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/notify", notificationHandler.SendNotification)
-	mux.HandleFunc("/health", handler.Health)
+	mux.HandleFunc("/health/live", handler.HealthLive)
+	mux.HandleFunc("/health/ready", notificationHandler.HealthReady(Version))
+	mux.HandleFunc("/health", notificationHandler.HealthReady(Version))
 
 	// Wrap with observability middleware
 	wrappedHandler := middleware.HTTP(mux, middleware.HTTPConfig{
-		SkipPaths:  []string{"/health", "/metrics"},
+		SkipPaths:  []string{"/health", "/health/live", "/health/ready", "/metrics"},
 		Module:     logging.Module("notification-invoker"),
 		Worker:     true,
 		TracerName: "github.com/KasumiMercury/primind-notification-invoker/internal/observability/middleware",
