@@ -120,6 +120,7 @@ func (h *NotificationHandler) SendNotification(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// Health returns a simple health check response for backward compatibility.
 func Health(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		respondJSON(w, http.StatusMethodNotAllowed, model.ErrorResponse{
@@ -132,6 +133,60 @@ func Health(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, model.HealthResponse{
 		Status: "ok",
 	})
+}
+
+// HealthLive returns a simple health check response for liveness probes.
+func HealthLive(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		respondJSON(w, http.StatusMethodNotAllowed, model.ErrorResponse{
+			Success: false,
+			Error:   "method not allowed",
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// HealthReady returns a health check response for readiness probes.
+// It verifies that the FCM client is initialized.
+func (h *NotificationHandler) HealthReady(version string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			respondJSON(w, http.StatusMethodNotAllowed, model.ErrorResponse{
+				Success: false,
+				Error:   "method not allowed",
+			})
+			return
+		}
+
+		response := map[string]interface{}{
+			"status":  "healthy",
+			"version": version,
+			"checks": map[string]interface{}{
+				"fcm": map[string]string{"status": "healthy"},
+			},
+		}
+
+		// Check if FCM client is initialized
+		if h.fcmClient == nil {
+			response["status"] = "unhealthy"
+			response["checks"] = map[string]interface{}{
+				"fcm": map[string]interface{}{
+					"status": "unhealthy",
+					"error":  "FCM client not initialized",
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				slog.Warn("failed to write response", "error", err)
+			}
+			return
+		}
+
+		respondJSON(w, http.StatusOK, response)
+	}
 }
 
 func respondJSON(w http.ResponseWriter, status int, data any) {
