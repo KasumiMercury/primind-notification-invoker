@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20251209175733-2a1774d88802.1
 	buf.build/go/protovalidate v1.1.0
+	connectrpc.com/grpchealth v1.4.0
 	firebase.google.com/go/v4 v4.18.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.54.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.30.0
@@ -32,6 +33,7 @@ require (
 	cloud.google.com/go/monitoring v1.24.2 // indirect
 	cloud.google.com/go/storage v1.53.0 // indirect
 	cloud.google.com/go/trace v1.11.6 // indirect
+	connectrpc.com/connect v1.11.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.54.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect

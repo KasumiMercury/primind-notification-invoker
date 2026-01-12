@@ -7,12 +7,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
+
+	"connectrpc.com/grpchealth"
 
 	"github.com/KasumiMercury/primind-notification-invoker/internal/config"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/fcm"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/handler"
+	"github.com/KasumiMercury/primind-notification-invoker/internal/health"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/observability/logging"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/observability/metrics"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/observability/middleware"
@@ -73,11 +77,18 @@ func run() error {
 
 	notificationHandler := handler.NewNotificationHandler(fcmClient)
 
+	// Health check setup
+	healthChecker := health.NewChecker(fcmClient, Version)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/notify", notificationHandler.SendNotification)
-	mux.HandleFunc("/health/live", handler.HealthLive)
-	mux.HandleFunc("/health/ready", notificationHandler.HealthReady(Version))
-	mux.HandleFunc("/health", notificationHandler.HealthReady(Version))
+	mux.HandleFunc("/health/live", healthChecker.LiveHandler)
+	mux.HandleFunc("/health/ready", healthChecker.ReadyHandler)
+	mux.HandleFunc("/health", healthChecker.ReadyHandler)
+
+	// gRPC Health Checking Protocol (grpc.health.v1.Health/Check)
+	grpcHealthChecker := health.NewGRPCChecker(healthChecker)
+	grpcHealthPath, grpcHealthHandler := grpchealth.NewHandler(grpcHealthChecker)
 
 	// Wrap with observability middleware
 	wrappedHandler := middleware.HTTP(mux, middleware.HTTPConfig{
@@ -99,9 +110,18 @@ func run() error {
 	})
 	wrappedHandler = middleware.PanicRecoveryHTTP(wrappedHandler)
 
+	// Create multiplexed handler for HTTP + gRPC health
+	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, grpcHealthPath) {
+			grpcHealthHandler.ServeHTTP(w, req)
+			return
+		}
+		wrappedHandler.ServeHTTP(w, req)
+	})
+
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           wrappedHandler,
+		Handler:           finalHandler,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
