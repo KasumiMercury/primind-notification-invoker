@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"connectrpc.com/grpchealth"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/KasumiMercury/primind-notification-invoker/internal/config"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/fcm"
@@ -119,9 +121,13 @@ func run() error {
 		wrappedHandler.ServeHTTP(w, req)
 	})
 
+	// Create HTTP/2 server for h2c (HTTP/2 Cleartext) support
+	// This enables grpc_health_probe to work in Docker environments without TLS
+	h2s := &http2.Server{}
+
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           finalHandler,
+		Handler:           h2c.NewHandler(finalHandler, h2s),
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
