@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"connectrpc.com/grpchealth"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/KasumiMercury/primind-notification-invoker/internal/config"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/fcm"
@@ -121,10 +119,14 @@ func run() error {
 		wrappedHandler.ServeHTTP(w, req)
 	})
 
-	h2s := &http2.Server{}
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           h2c.NewHandler(finalHandler, h2s),
+		Handler:           finalHandler,
+		Protocols:         protocols,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
