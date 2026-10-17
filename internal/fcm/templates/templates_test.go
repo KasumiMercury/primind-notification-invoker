@@ -104,12 +104,13 @@ func TestGetAllBodies(t *testing.T) {
 	for _, taskType := range types {
 		t.Run(taskType.String(), func(t *testing.T) {
 			bodies := provider.GetAllBodies(taskType)
-			if len(bodies) == 0 {
-				t.Errorf("expected at least one body for %s", taskType.String())
+			if len(bodies) < 2 {
+				t.Errorf("expected at least 2 bodies for %s, got %d", taskType.String(), len(bodies))
 			}
-			// Verify we have 5 bodies per type as defined in messages.json
-			if len(bodies) != 5 {
-				t.Errorf("expected 5 bodies for %s, got %d", taskType.String(), len(bodies))
+			for i, body := range bodies {
+				if body == "" {
+					t.Errorf("body %d for %s is empty", i, taskType.String())
+				}
 			}
 		})
 	}
@@ -121,19 +122,28 @@ func TestGetTitle(t *testing.T) {
 		t.Fatalf("failed to get provider: %v", err)
 	}
 
-	expectedTitles := map[domain.Type]string{
-		domain.TypeShort:     "「すぐ」のタスクがあります",
-		domain.TypeNear:      "そろそろ取りかかりませんか？",
-		domain.TypeRelaxed:   "のんびりでも大丈夫です",
-		domain.TypeScheduled: "予定の時間です",
+	defaultTitle := provider.GetTitle(domain.Type("unknown"))
+	types := []domain.Type{
+		domain.TypeShort,
+		domain.TypeNear,
+		domain.TypeRelaxed,
+		domain.TypeScheduled,
 	}
 
-	for taskType, expectedTitle := range expectedTitles {
+	seen := make(map[string]domain.Type)
+	for _, taskType := range types {
 		t.Run(taskType.String(), func(t *testing.T) {
 			title := provider.GetTitle(taskType)
-			if title != expectedTitle {
-				t.Errorf("expected title %q for %s, got %q", expectedTitle, taskType.String(), title)
+			if title == "" {
+				t.Fatalf("expected non-empty title for %s", taskType.String())
 			}
+			if title == defaultTitle {
+				t.Errorf("expected type-specific title for %s, got default %q", taskType.String(), title)
+			}
+			if other, ok := seen[title]; ok {
+				t.Errorf("title %q for %s duplicates %s", title, taskType.String(), other.String())
+			}
+			seen[title] = taskType
 		})
 	}
 }

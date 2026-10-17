@@ -104,30 +104,8 @@ func (c *Client) SendBulkNotification(ctx context.Context, tokens []domain.FCMTo
 }
 
 func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID domain.TaskID, taskType domain.Type, color string) (*BulkResult, error) {
-	template := getTemplate(taskType)
 	tokenStrings := domain.ToStrings(tokens)
-
-	notification := &messaging.Notification{
-		Title: template.Title,
-		Body:  template.Body,
-	}
-
-	message := &messaging.MulticastMessage{
-		Data: map[string]string{
-			"task_id":   taskID.String(),
-			"task_type": taskType.String(),
-		},
-		Notification: notification,
-		Tokens:       tokenStrings,
-	}
-
-	// Add icon URL if web app base URL is configured and color is provided
-	if c.webAppBaseURL != "" && color != "" {
-		iconURL := buildIconURL(c.webAppBaseURL, taskType, color)
-		message.Webpush.Notification.Icon = iconURL
-		message.Android.Notification.Icon = iconURL
-		slog.Debug("notification icon URL set", "icon_url", iconURL)
-	}
+	message := c.buildMessage(tokenStrings, taskID, taskType, color)
 
 	response, err := c.messagingClient.SendEachForMulticast(ctx, message)
 	if err != nil {
@@ -157,6 +135,38 @@ func (c *Client) sendBatch(ctx context.Context, tokens []domain.FCMToken, taskID
 		FailureCount: response.FailureCount,
 		Results:      results,
 	}, nil
+}
+
+func (c *Client) buildMessage(tokenStrings []string, taskID domain.TaskID, taskType domain.Type, color string) *messaging.MulticastMessage {
+	template := getTemplate(taskType)
+
+	notification := &messaging.Notification{
+		Title: template.Title,
+		Body:  template.Body,
+	}
+
+	message := &messaging.MulticastMessage{
+		Data: map[string]string{
+			"task_id":   taskID.String(),
+			"task_type": taskType.String(),
+		},
+		Notification: notification,
+		Tokens:       tokenStrings,
+	}
+
+	// Add icon URL if web app base URL is configured and color is provided
+	if c.webAppBaseURL != "" && color != "" {
+		iconURL := buildIconURL(c.webAppBaseURL, taskType, color)
+		message.Webpush = &messaging.WebpushConfig{
+			Notification: &messaging.WebpushNotification{Icon: iconURL},
+		}
+		message.Android = &messaging.AndroidConfig{
+			Notification: &messaging.AndroidNotification{Icon: iconURL},
+		}
+		slog.Debug("notification icon URL set", "icon_url", iconURL)
+	}
+
+	return message
 }
 
 func getTemplate(taskType domain.Type) NotificationTemplate {
