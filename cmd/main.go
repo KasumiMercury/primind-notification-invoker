@@ -76,6 +76,46 @@ func run() error {
 		slog.String("web_app_base_url", cfg.WebAppBaseURL),
 	)
 
+	server := newServer(cfg.Port, fcmClient, httpMetrics)
+
+	slog.InfoContext(ctx, "starting server",
+		slog.String("event", "server.start"),
+		slog.String("port", cfg.Port),
+		slog.String("version", Version),
+	)
+
+	go func() {
+		<-ctx.Done()
+
+		slog.InfoContext(ctx, "shutdown signal received",
+			slog.String("event", "server.shutdown.start"),
+		)
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			slog.Error("failed to shutdown server", slog.String("error", err.Error()))
+		}
+	}()
+
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.ErrorContext(ctx, "server exited with error",
+			slog.String("event", "server.exit.fail"),
+			slog.String("error", err.Error()),
+		)
+
+		return err
+	}
+
+	slog.InfoContext(ctx, "server stopped",
+		slog.String("event", "server.stop"),
+	)
+
+	return nil
+}
+
+func newServer(port string, fcmClient *fcm.Client, httpMetrics *metrics.HTTPMetrics) *http.Server {
 	notificationHandler := handler.NewNotificationHandler(fcmClient)
 
 	// Health check setup
@@ -121,8 +161,8 @@ func run() error {
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 
-	server := &http.Server{
-		Addr:              ":" + cfg.Port,
+	return &http.Server{
+		Addr:              ":" + port,
 		Handler:           finalHandler,
 		Protocols:         protocols,
 		ReadTimeout:       10 * time.Second,
@@ -130,40 +170,4 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
-	slog.InfoContext(ctx, "starting server",
-		slog.String("event", "server.start"),
-		slog.String("port", cfg.Port),
-		slog.String("version", Version),
-	)
-
-	go func() {
-		<-ctx.Done()
-
-		slog.InfoContext(ctx, "shutdown signal received",
-			slog.String("event", "server.shutdown.start"),
-		)
-
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-		defer shutdownCancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.Error("failed to shutdown server", slog.String("error", err.Error()))
-		}
-	}()
-
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.ErrorContext(ctx, "server exited with error",
-			slog.String("event", "server.exit.fail"),
-			slog.String("error", err.Error()),
-		)
-
-		return err
-	}
-
-	slog.InfoContext(ctx, "server stopped",
-		slog.String("event", "server.stop"),
-	)
-
-	return nil
 }
