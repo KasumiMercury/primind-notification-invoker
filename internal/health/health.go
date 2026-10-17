@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"connectrpc.com/grpchealth"
+	"connectrpc.com/grpchealth/v2"
 )
 
 // Status represents the health status of a service or dependency.

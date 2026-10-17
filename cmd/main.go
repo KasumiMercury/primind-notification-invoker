@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
-	"connectrpc.com/grpchealth"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	"connectrpc.com/grpchealth/v2"
 
 	"github.com/KasumiMercury/primind-notification-invoker/internal/config"
 	"github.com/KasumiMercury/primind-notification-invoker/internal/fcm"
@@ -88,7 +89,8 @@ func run() error {
 
 	// gRPC Health Checking Protocol (grpc.health.v1.Health/Check)
 	grpcHealthChecker := health.NewGRPCChecker(healthChecker)
-	grpcHealthPath, grpcHealthHandler := grpchealth.NewHandler(grpcHealthChecker)
+	grpcHealthServer := connect.NewServer()
+	grpchealth.Register(grpcHealthServer, grpcHealthChecker)
 
 	// Wrap with observability middleware
 	wrappedHandler := middleware.HTTP(mux, middleware.HTTPConfig{
@@ -111,13 +113,9 @@ func run() error {
 	wrappedHandler = middleware.PanicRecoveryHTTP(wrappedHandler)
 
 	// Create multiplexed handler for HTTP + gRPC health
-	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if strings.HasPrefix(req.URL.Path, grpcHealthPath) {
-			grpcHealthHandler.ServeHTTP(w, req)
-			return
-		}
-		wrappedHandler.ServeHTTP(w, req)
-	})
+	finalHandler := http.NewServeMux()
+	connecthttp.Mount(finalHandler, grpcHealthServer)
+	finalHandler.Handle("/", wrappedHandler)
 
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
